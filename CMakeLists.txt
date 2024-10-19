@@ -32,12 +32,22 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(led_strip 
-    led_strip.c
-    )
+add_executable(led_strip led_strip.c apa102.c)
+
+pico_generate_pio_header(led_strip ${CMAKE_CURRENT_LIST_DIR}/apa102.pio)
+
+#target_sources(pio_apa102 PRIVATE apa102.c)
+
 
 # pull in common dependencies
-target_link_libraries(led_strip pico_stdlib hardware_spi hardware_interp pico_stdio_usb pico_rand)
+target_link_libraries(led_strip 
+    pico_stdlib 
+    hardware_spi 
+    hardware_adc 
+    hardware_pio 
+    hardware_interp 
+    pico_stdio_usb 
+    pico_rand)
 
 if (PICO_CYW43_SUPPORTED)
     target_link_libraries(blink pico_cyw43_arch_none)

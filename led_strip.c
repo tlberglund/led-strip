@@ -10,11 +10,12 @@
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
 #include "hardware/interp.h"
+#include "hardware/adc.h"
 #include "pico/rand.h"
 
 
-#define FRAME_RATE_MS 1000/24
 
+#define FRAME_RATE_MS 1000/24
 
 
 typedef struct {
@@ -68,9 +69,10 @@ static inline uint32_t apa102_command(uint8_t brightness, uint8_t red, uint8_t g
 }
 
 void apa102_strip_update(APA102_LED *strip, uint16_t led_count) {
-    uint32_t start_frame = 0;
+    uint32_t start_frame = 0, end_frame = 0xffffffff;
     spi_write_blocking(spi_default, (uint8_t *)&start_frame, sizeof(uint32_t));
     spi_write_blocking(spi_default, (uint8_t *)strip, led_count * 4);
+    spi_write_blocking(spi_default, (uint8_t *)&end_frame, sizeof(uint32_t));
 }
 
 
@@ -118,18 +120,18 @@ void hsl_to_rgb(HSL *hsl, RGB *rgb) {
 
     // Normalize saturation and lightness to the range 0.0 - 1.0
     float s_f = hsl->saturation / 1000.0;
-    // printf("s_f=%f\n", s_f);
+    printf("%1.7f,", s_f);
     float l_f = hsl->lightness / 1000.0;
-    // printf("l_f=%f\n",l_f);
+    printf("%1.7f,", l_f);
 
     // Calculate chroma
     float c = (1.0f - fabs(2.0f * l_f - 1.0f)) * s_f;
-    // printf("c=%f\n",c);
+    printf("%1.7f,", c);
 
     float x = c * (1.0f - fabs(fmod(hsl->hue / 60.0, 2) - 1.0f));
-    // printf("x=%f\n",x);
+    printf("%1.7f,", x);
     float m = l_f - c / 2.0;
-    // printf("m=%f\n",m);
+    printf("%1.7f,", m);
 
     float r1 = 0, g1 = 0, b1 = 0;
 
@@ -148,7 +150,7 @@ void hsl_to_rgb(HSL *hsl, RGB *rgb) {
         r1 = c; g1 = 0; b1 = x;
     }
 
-    // printf("r1/g1/b1=%f/%f/%f\n",r1,g1,b1);
+    printf("%1.7f,%1.7f,%1.7f,",r1,g1,b1);
 
     // Convert to 0-255 range and store the values in the RGB variables
     rgb->red = clamp((r1 + m) * 255);
@@ -160,14 +162,59 @@ void hsl_to_rgb(HSL *hsl, RGB *rgb) {
 
 uint32_t iteration;
 uint16_t next_hue = 0, last_hue = 0;
+float fitered_h = 180.0, filtered_l = 500.0, filtered_s = 500.0;
+float filtered_r = 1.0, filtered_g = 1.0, filtered_b = 1.0;
+
+#define FILTER_ALPHA 0.05
+float filter_float(float previous, float new) {
+    return ((FILTER_ALPHA * new) + ((1.0 - FILTER_ALPHA) * previous));
+}
+
 bool led_strip_frame_callback(__unused struct repeating_timer *t) {
-    // printf("iteration %d\n", iteration);
-    pico_set_led(true);
-    apa102_strip_update(strip, LED_STRIP_LEN);
-    pico_set_led(false);
+
+    uint16_t adc_hue, adc_lightness, adc_saturation;
+
+    adc_select_input(0);
+    adc_hue = adc_read();
+    adc_select_input(1);
+    adc_lightness = adc_read();
+    adc_select_input(2);
+    adc_saturation = adc_read();
 
     RGB rgb;
     HSL hsl;
+
+    // fitered_h = filter_float(fitered_h, adc_hue / 4096.0 * 360.0);
+    // filtered_l = filter_float(filtered_l, adc_lightness / 4096.0 * 1000.0);
+    // filtered_s = filter_float(filtered_s, adc_saturation / 4096.0 * 1000.0);
+
+    // hsl.hue = (uint16_t)fitered_h;
+    // hsl.lightness = (uint16_t)filtered_l;
+    // hsl.saturation = (uint16_t)filtered_s;
+
+    // printf("%04d,%04d,%04d,%03d,%03d,%03d,",
+    //        adc_hue, adc_saturation, adc_lightness,
+    //        hsl.hue, hsl.saturation, hsl.lightness);
+
+
+    filtered_r = filter_float(filtered_r, adc_hue / 4096.0 * 256.0);
+    filtered_g = filter_float(filtered_g, adc_lightness / 4096.0 * 256.0);
+    filtered_b = filter_float(filtered_b, adc_saturation / 4096.0 * 256.0);
+    rgb.red = (uint8_t)filtered_r;
+    rgb.green = (uint8_t)filtered_g;
+    rgb.blue = (uint8_t)filtered_b;
+
+    // hsl_to_rgb(&hsl, &rgb);
+
+    printf("%03d,%03d,%03d\n",rgb.red, rgb.green, rgb.blue);
+
+    for(int i = 0; i < LED_STRIP_LEN; i++) {
+        strip[i].green = rgb.green;
+        strip[i].red = rgb.red;
+        strip[i].blue = rgb.blue;
+    }
+
+#if 0
     int16_t animation_step = (iteration % 60) - 5;
     for(int i = 0; i < LED_STRIP_LEN; i++) {
         uint16_t distance_from_step = abs(i - animation_step);
@@ -197,6 +244,13 @@ bool led_strip_frame_callback(__unused struct repeating_timer *t) {
     }
 
     iteration++;
+#endif
+
+     // printf("iteration %d\n", iteration);
+    pico_set_led(true);
+    apa102_strip_update(strip, LED_STRIP_LEN);
+    pico_set_led(false);
+
     return true;
 }
 
@@ -206,6 +260,9 @@ int main() {
     pico_led_init();
     pico_set_led(true);
     stdio_init_all();
+
+    adc_init();
+    adc_gpio_init(26);
 
     spi_init(spi_default, 1000 * 1000);
     gpio_set_function(PICO_DEFAULT_SPI_RX_PIN, GPIO_FUNC_SPI);
@@ -218,7 +275,13 @@ int main() {
     struct repeating_timer timer;
     add_repeating_timer_ms(FRAME_RATE_MS, led_strip_frame_callback, NULL, &timer);
 
+
+    float g1 = 0.067694;
+    float m = 0.147153;
+    float g = clamp((g1 + m) * 255);
+
     while(true) {
+        // printf("g1=%1.7f\tm=%1.7f\tg=%1.7f\n", g1, m, g);
         sleep_ms(1000);
     }
 }
