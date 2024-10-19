@@ -6,29 +6,31 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "math.h"
+#include <math.h>
 #include "pico/stdlib.h"
-#include "hardware/spi.h"
 #include "hardware/interp.h"
 #include "hardware/adc.h"
 #include "pico/rand.h"
+#include "apa102.h"
 
 
 
 #define FRAME_RATE_MS 1000/24
 
 
-typedef struct {
-    unsigned int unused : 3;
-    unsigned int brightness : 5;
-    unsigned int blue : 8;
-    unsigned int green : 8;
-    unsigned int red : 8;
-} APA102_LED;
-
 #define LED_STRIP_LEN 60
 APA102_LED strip[LED_STRIP_LEN];
 
+
+int pico_led_init(void) {
+    gpio_init(PICO_DEFAULT_LED_PIN);
+    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+    return PICO_OK;
+}
+
+void pico_set_led(bool led_on) {
+    gpio_put(PICO_DEFAULT_LED_PIN, led_on);
+}
 
 void printbuf(uint8_t buf[], size_t len) {
     size_t i;
@@ -46,46 +48,8 @@ void printbuf(uint8_t buf[], size_t len) {
 }
 
 
-// Perform initialisation
-int pico_led_init(void) {
-    gpio_init(PICO_DEFAULT_LED_PIN);
-    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
-    return PICO_OK;
-}
-
-// Turn the led on or off
-void pico_set_led(bool led_on) {
-    // Just set the GPIO on or off
-    gpio_put(PICO_DEFAULT_LED_PIN, led_on);
-}
 
 
-static inline uint32_t apa102_command(uint8_t brightness, uint8_t red, uint8_t green, uint8_t blue) {
-    return (0x7 << 29) || 
-           ((uint32_t)(brightness & 0x1f) << 24) || 
-           ((uint32_t)(blue & 0xff) << 16) || 
-           ((uint32_t)(green & 0xff) << 8) || 
-           (red & 0xff);
-}
-
-void apa102_strip_update(APA102_LED *strip, uint16_t led_count) {
-    uint32_t start_frame = 0, end_frame = 0xffffffff;
-    spi_write_blocking(spi_default, (uint8_t *)&start_frame, sizeof(uint32_t));
-    spi_write_blocking(spi_default, (uint8_t *)strip, led_count * 4);
-    spi_write_blocking(spi_default, (uint8_t *)&end_frame, sizeof(uint32_t));
-}
-
-
-void apa102_strip_init(APA102_LED *strip, uint16_t led_count) {
-    // Initialize strip
-    for(int i = 0; i < LED_STRIP_LEN; i++) {
-        strip[i].unused = 0x7;
-        strip[i].brightness = 0;
-        strip[i].red = 0;
-        strip[i].green = 0;
-        strip[i].blue = 0;
-    }
-}
 
 typedef struct {
     uint16_t hue;
@@ -165,7 +129,7 @@ uint16_t next_hue = 0, last_hue = 0;
 float fitered_h = 180.0, filtered_l = 500.0, filtered_s = 500.0;
 float filtered_r = 1.0, filtered_g = 1.0, filtered_b = 1.0;
 
-#define FILTER_ALPHA 0.05
+#define FILTER_ALPHA 1.0
 float filter_float(float previous, float new) {
     return ((FILTER_ALPHA * new) + ((1.0 - FILTER_ALPHA) * previous));
 }
@@ -184,27 +148,27 @@ bool led_strip_frame_callback(__unused struct repeating_timer *t) {
     RGB rgb;
     HSL hsl;
 
-    // fitered_h = filter_float(fitered_h, adc_hue / 4096.0 * 360.0);
-    // filtered_l = filter_float(filtered_l, adc_lightness / 4096.0 * 1000.0);
-    // filtered_s = filter_float(filtered_s, adc_saturation / 4096.0 * 1000.0);
+    fitered_h = filter_float(fitered_h, adc_hue / 4096.0 * 360.0);
+    filtered_l = filter_float(filtered_l, adc_lightness / 4096.0 * 1000.0);
+    filtered_s = filter_float(filtered_s, adc_saturation / 4096.0 * 1000.0);
 
-    // hsl.hue = (uint16_t)fitered_h;
-    // hsl.lightness = (uint16_t)filtered_l;
-    // hsl.saturation = (uint16_t)filtered_s;
+    hsl.hue = (uint16_t)fitered_h;
+    hsl.lightness = (uint16_t)filtered_l;
+    hsl.saturation = (uint16_t)filtered_s;
 
-    // printf("%04d,%04d,%04d,%03d,%03d,%03d,",
-    //        adc_hue, adc_saturation, adc_lightness,
-    //        hsl.hue, hsl.saturation, hsl.lightness);
+    printf("%04d,%04d,%04d,%03d,%03d,%03d,",
+           adc_hue, adc_saturation, adc_lightness,
+           hsl.hue, hsl.saturation, hsl.lightness);
 
 
-    filtered_r = filter_float(filtered_r, adc_hue / 4096.0 * 256.0);
-    filtered_g = filter_float(filtered_g, adc_lightness / 4096.0 * 256.0);
-    filtered_b = filter_float(filtered_b, adc_saturation / 4096.0 * 256.0);
-    rgb.red = (uint8_t)filtered_r;
-    rgb.green = (uint8_t)filtered_g;
-    rgb.blue = (uint8_t)filtered_b;
+    // filtered_r = filter_float(filtered_r, adc_hue / 4096.0 * 256.0);
+    // filtered_g = filter_float(filtered_g, adc_lightness / 4096.0 * 256.0);
+    // filtered_b = filter_float(filtered_b, adc_saturation / 4096.0 * 256.0);
+    // rgb.red = (uint8_t)filtered_r;
+    // rgb.green = (uint8_t)filtered_g;
+    // rgb.blue = (uint8_t)filtered_b;
 
-    // hsl_to_rgb(&hsl, &rgb);
+    hsl_to_rgb(&hsl, &rgb);
 
     printf("%03d,%03d,%03d\n",rgb.red, rgb.green, rgb.blue);
 
@@ -257,31 +221,25 @@ bool led_strip_frame_callback(__unused struct repeating_timer *t) {
 
 int main() {
     printf("APA102 LED strip control\n");
-    pico_led_init();
-    pico_set_led(true);
     stdio_init_all();
+    pico_led_init();
+    pico_set_led(false);
 
     adc_init();
     adc_gpio_init(26);
+    // adc_gpio_init(27);
+    // adc_gpio_init(28);
 
-    spi_init(spi_default, 1000 * 1000);
-    gpio_set_function(PICO_DEFAULT_SPI_RX_PIN, GPIO_FUNC_SPI);
-    gpio_set_function(PICO_DEFAULT_SPI_SCK_PIN, GPIO_FUNC_SPI);
-    gpio_set_function(PICO_DEFAULT_SPI_TX_PIN, GPIO_FUNC_SPI);
-    gpio_set_function(PICO_DEFAULT_SPI_CSN_PIN, GPIO_FUNC_SPI);
-
+    apa102_init();
     apa102_strip_init(strip, LED_STRIP_LEN);
 
     struct repeating_timer timer;
     add_repeating_timer_ms(FRAME_RATE_MS, led_strip_frame_callback, NULL, &timer);
 
-
-    float g1 = 0.067694;
-    float m = 0.147153;
-    float g = clamp((g1 + m) * 255);
-
     while(true) {
-        // printf("g1=%1.7f\tm=%1.7f\tg=%1.7f\n", g1, m, g);
+        // pico_set_led(true);
+        // sleep_ms(1000);
+        // pico_set_led(false);
         sleep_ms(1000);
     }
 }
