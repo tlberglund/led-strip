@@ -12,8 +12,11 @@
 
 #define PIN_CLK 2
 #define PIN_DIN 3
-#define SERIAL_FREQ ((uint)(7.5 * 1000 * 1000))
+#define SERIAL_FREQ ((uint)(5 * 1000 * 1000))
 #define MAX_STRIP_LENGTH 1000
+
+#define APA102_START_FRAME ((APA102_LED)0);
+#define APA102_END_FRAME ((APA102_LED)0xffffffff);
 
 PIO apa102_pio = pio0;
 uint apa102_sm = 0;
@@ -36,12 +39,12 @@ uint16_t apa102_get_strip_len() {
 
 
 void apa102_config_tx_dma() {
-        dma_channel_configure(dma_pio_tx, 
-                              &apa102_dma_channel_config,
-                              &apa102_pio->txf[apa102_sm], // write address
-                              apa102_strip,                // read address
-                              (apa102_strip_length + 2),
-                              false);                      // don't start yet
+    dma_channel_configure(dma_pio_tx, 
+                          &apa102_dma_channel_config,
+                          &apa102_pio->txf[apa102_sm], // write address
+                          apa102_strip,                // read address
+                          (apa102_strip_length + 2),
+                          false);                      // don't start yet
 }
 
 
@@ -49,18 +52,21 @@ void apa102_strip_init(APA102_LED *strip, uint16_t strip_len) {
     // Start frame is 32 bits of all zeros
     memset(strip, 0, sizeof(APA102_LED));
 
-    // Init strip to full brighness black (okay, sure)
+    // Init strip to zero brighness black
     for(int i = 1; i < strip_len; i++) {
         strip[i].unused = 0x7;
-        strip[i].brightness = 15;
+        strip[i].brightness = 0;
         strip[i].red = 0;
         strip[i].green = 0;
-        strip[i].blue = 0x80;
+        strip[i].blue = 0;
     }
 
     // End frame is 32 bits of all ones
-    memset(strip + strip_len * sizeof(APA102_LED), ~0u, sizeof(APA102_LED));
+    memset(&strip[strip_len], 0xff, sizeof(APA102_LED));
 
+    for(int i = 0; i < strip_len + 2; i++) {
+        printf("%08x\n", (uint32_t)(strip + i * 4));
+    }
 }
 
 
@@ -95,7 +101,6 @@ APA102_LED *apa102_init(uint16_t strip_len) {
         channel_config_set_bswap(&apa102_dma_channel_config, true);
         channel_config_set_transfer_data_size(&apa102_dma_channel_config, DMA_SIZE_32);
         channel_config_set_dreq(&apa102_dma_channel_config, pio_get_dreq(apa102_pio, apa102_sm, true));
-
     }
 
     return apa102_strip;

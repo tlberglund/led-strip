@@ -169,16 +169,38 @@ bool led_strip_frame_callback(__unused struct repeating_timer *t) {
     }
 */
 
-    adc_select_input(0);
-    uint16_t adc_brightness = adc_read();
-    int8_t brightness = ((float)adc_brightness / (4096.0 / 16.0));
-    int16_t animation_step = (iteration % 80) - 15;
+    // adc_select_input(0);
+    // uint16_t adc_brightness = adc_read();
+    // int8_t brightness = ((float)adc_brightness / (4096.0 / 16.0));
+    // int16_t animation_step = (iteration % 80) - 15;
 
-    filtered_l = 500.0;
-    filtered_s = 850.0;
-    filtered_h = 142.5;
+    adc_select_input(0);
+    // uint16_t adc_hue = adc_read();
+    // uint16_t adc_lightness = adc_read();
+    // filtered_h = filter_float(filtered_h, adc_hue / 4096.0 * 360.0);
+    // filtered_l = filter_float(filtered_l, adc_lightness / 4096.0 * 1000.0);
+    // filtered_s = filter_float(filtered_s, adc_saturation / 4096.0 * 1000.0);
+
+    uint16_t adc_color = adc_read();
+    uint16_t color = adc_color >> 4;
+    printf("%04u\t%04u\n", adc_color, color);
+
+
+    // filtered_l = 500.0;
+    // filtered_s = 850.0;
+    // filtered_h = 180.0;
+    // printf("%u\t%3.1f\n",adc_hue, filtered_h);
+
+    // hsl.hue = (uint16_t)filtered_h;
+    // hsl.lightness = (uint16_t)filtered_l;
+    // hsl.saturation = (uint16_t)filtered_s;
+    // hsl_to_rgb(&hsl, &rgb);
+    rgb.red = 0x80;
+    rgb.green = 0x55;
+    rgb.blue = 0x01;
 
     for(int i = 0; i < LED_STRIP_LEN; i++) {
+        /*
         uint16_t distance_from_step = abs(i - animation_step);
         int16_t lightness = filtered_l - (distance_from_step * 50);
         if(lightness < 0) {
@@ -191,9 +213,8 @@ bool led_strip_frame_callback(__unused struct repeating_timer *t) {
             hsl.saturation = filtered_s;
             hsl.hue = filtered_h;
         }
-
-        hsl_to_rgb(&hsl, &rgb);
-                apa102_set_led(i, rgb.red, rgb.green, rgb.blue, brightness);
+        */
+        apa102_set_led(i, rgb.red, rgb.green, rgb.blue, 15);
     }
     iteration++;
 
