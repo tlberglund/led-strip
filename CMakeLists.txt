@@ -44,8 +44,8 @@ target_link_libraries(led_strip
     pico_stdlib 
     hardware_spi 
     hardware_adc 
-    hardware_pio 
-    hardware_interp 
+    hardware_pio
+    hardware_dma 
     pico_stdio_usb 
     pico_rand)
 

@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <math.h>
 #include "pico/stdlib.h"
-#include "hardware/interp.h"
 #include "hardware/adc.h"
 #include "pico/rand.h"
 #include "apa102.h"
@@ -19,7 +18,7 @@
 
 
 #define LED_STRIP_LEN 60
-APA102_LED strip[LED_STRIP_LEN];
+APA102_LED *strip;
 
 
 int pico_led_init(void) {
@@ -194,18 +193,16 @@ bool led_strip_frame_callback(__unused struct repeating_timer *t) {
         }
 
         hsl_to_rgb(&hsl, &rgb);
-        
-        strip[i].brightness = brightness;
-        strip[i].green = rgb.green;
-        strip[i].red = rgb.red;
-        strip[i].blue = rgb.blue;
+                apa102_set_led(i, rgb.red, rgb.green, rgb.blue, brightness);
     }
-
     iteration++;
 
-    pico_set_led(true);
-    apa102_strip_update(strip, LED_STRIP_LEN);
-    pico_set_led(false);
+    if(iteration & 1)
+        pico_set_led(true);
+    else
+        pico_set_led(false);
+
+    apa102_strip_update();
 
     return true;
 }
@@ -219,11 +216,9 @@ int main() {
 
     adc_init();
     adc_gpio_init(26);
-    // adc_gpio_init(27);
-    // adc_gpio_init(28);
 
-    apa102_init();
-    apa102_strip_init(strip, LED_STRIP_LEN);
+    strip = apa102_init(LED_STRIP_LEN);
+    apa102_log_strip();
 
     struct repeating_timer timer;
     add_repeating_timer_ms(FRAME_RATE_MS, led_strip_frame_callback, NULL, &timer);
