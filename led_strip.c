@@ -8,17 +8,23 @@
 #include <stdlib.h>
 #include <math.h>
 #include "pico/stdlib.h"
+#include "pico/binary_info.h"
+#include "hardware/spi.h"
+#include "hardware/dma.h"
 #include "hardware/adc.h"
 #include "pico/rand.h"
 #include "apa102.h"
-
+#include "hsl_to_rgb.h"
 
 
 #define FRAME_RATE_MS 1000/24
-
-
 #define LED_STRIP_LEN 60
+
 APA102_LED *strip;
+uint dma_spi_rx;
+uint32_t iteration;
+float filtered_h = 180.0, filtered_l = 500.0, filtered_s = 500.0;
+
 
 
 int pico_led_init(void) {
@@ -48,174 +54,19 @@ void printbuf(uint8_t buf[], size_t len) {
 
 
 
-
-
-typedef struct {
-    uint16_t hue;
-    uint16_t saturation;
-    uint16_t lightness;
-} HSL;
-
-typedef struct 
-{
-    uint8_t red;
-    uint8_t green;
-    uint8_t blue;
-} RGB;
-
-uint8_t clamp(int value) {
-    if (value < 0) return 0;
-    if (value > 255) return 255;
-    return (uint8_t)value;
-}
-
-/**
- * Convert HSL to RGB.
- * 
- * Hue is in the range of 0 to 359
- * Saturation is in the range of 0 to 999
- * Lightness is in the range of 0 to 999
- * 
- * Red, green, and blue outputs are unsigned 8-bit integers
- */
-void hsl_to_rgb(HSL *hsl, RGB *rgb) {
-    // printf("CONVERTING %d, %d, %d to RGB\n", hsl->hue, hsl->saturation, hsl->lightness);
-
-    // Normalize saturation and lightness to the range 0.0 - 1.0
-    float s_f = hsl->saturation / 1000.0;
-    // printf("%1.7f,", s_f);
-    float l_f = hsl->lightness / 1000.0;
-    // printf("%1.7f,", l_f);
-
-    // Calculate chroma
-    float c = (1.0f - fabs(2.0f * l_f - 1.0f)) * s_f;
-    // printf("%1.7f,", c);
-
-    float x = c * (1.0f - fabs(fmod(hsl->hue / 60.0, 2) - 1.0f));
-    // printf("%1.7f,", x);
-    float m = l_f - c / 2.0;
-    // printf("%1.7f,", m);
-
-    float r1 = 0, g1 = 0, b1 = 0;
-
-    // Determine the RGB1 values based on the hue segment
-    if (hsl->hue < 60) {
-        r1 = c; g1 = x; b1 = 0;
-    } else if (hsl->hue < 120) {
-        r1 = x; g1 = c; b1 = 0;
-    } else if (hsl->hue < 180) {
-        r1 = 0; g1 = c; b1 = x;
-    } else if (hsl->hue < 240) {
-        r1 = 0; g1 = x; b1 = c;
-    } else if (hsl->hue < 300) {
-        r1 = x; g1 = 0; b1 = c;
-    } else {
-        r1 = c; g1 = 0; b1 = x;
-    }
-
-    // printf("%1.7f,%1.7f,%1.7f,",r1,g1,b1);
-
-    // Convert to 0-255 range and store the values in the RGB variables
-    rgb->red = clamp((r1 + m) * 255);
-    rgb->green = clamp((g1 + m) * 255);
-    rgb->blue = clamp((b1 + m) * 255);
-
-    // printf("RGB=%d/%d/%d\n",rgb->red,rgb->green,rgb->blue);
-}
-
-uint32_t iteration;
-float filtered_h = 180.0, filtered_l = 500.0, filtered_s = 500.0;
-
-#define FILTER_ALPHA 0.1
-float filter_float(float previous, float new) {
-    return ((FILTER_ALPHA * new) + ((1.0 - FILTER_ALPHA) * previous));
-}
-
-bool led_strip_frame_callback(__unused struct repeating_timer *t) {
-    RGB rgb;
-    HSL hsl;
-
-/*
-    uint16_t adc_hue, adc_lightness, adc_saturation;
-    adc_select_input(0);
-    adc_hue = adc_read();
-    adc_select_input(1);
-    adc_lightness = adc_read();
-    adc_select_input(2);
-    adc_saturation = adc_read();
-
-
-    filtered_h = filter_float(filtered_h, adc_hue / 4096.0 * 360.0);
-    filtered_l = filter_float(filtered_l, adc_lightness / 4096.0 * 1000.0);
-    filtered_s = filter_float(filtered_s, adc_saturation / 4096.0 * 1000.0);
-    printf("%03.1f,%04.1f,%04.1f\n", filtered_h, filtered_s, filtered_l);
-
-    hsl.hue = (uint16_t)fitered_h;
-    hsl.lightness = (uint16_t)filtered_l;
-    hsl.saturation = (uint16_t)filtered_s;
-
-    printf("%04d,%04d,%04d,%03d,%03d,%03d,",
-           adc_hue, adc_saturation, adc_lightness,
-           hsl.hue, hsl.saturation, hsl.lightness);
-
-    hsl_to_rgb(&hsl, &rgb);
-
-
-    printf("%03d,%03d,%03d\n",rgb.red, rgb.green, rgb.blue);
-    for(int i = 0; i < LED_STRIP_LEN; i++) {
-        strip[i].green = rgb.green;
-        strip[i].red = rgb.red;
-        strip[i].blue = rgb.blue;
-    }
-*/
-
-    adc_select_input(0);
-    uint16_t adc_brightness = adc_read();
-    int8_t brightness = ((float)adc_brightness / (4096.0 / 16.0));
-    int16_t animation_step = (iteration % 80) - 15;
-
-    uint16_t adc_color = adc_read();
-    uint16_t color = adc_color >> 4;
-
-    filtered_l = 500.0;
-    filtered_s = 850.0;
-    filtered_h = 180.0;
-
-    hsl.hue = (uint16_t)filtered_h;
-    hsl.lightness = (uint16_t)filtered_l;
-    hsl.saturation = (uint16_t)filtered_s;
-
-    for(int i = 0; i < LED_STRIP_LEN; i++) {
-        uint16_t distance_from_step = abs(i - animation_step);
-        int16_t lightness = filtered_l - (distance_from_step * 50);
-        if(lightness < 0) {
-            hsl.lightness = 0;
-            hsl.saturation = filtered_s;
-            hsl.hue = filtered_h;
-        }
-        else {
-            hsl.lightness = lightness;
-            hsl.saturation = filtered_s;
-            hsl.hue = filtered_h;
-        }
-        hsl_to_rgb(&hsl, &rgb);
-        apa102_set_led(i, rgb.red, rgb.green, rgb.blue, brightness);
-    }
-    iteration++;
-
-    if(iteration & 1)
-        pico_set_led(true);
-    else
-        pico_set_led(false);
-
+void rx_dma_irq_handler() {
+    // SPI DMA has dumped a complete APA102 LED image into the API's buffer. Send
+    // it to the PIO, so we can see pretty lights.
     apa102_strip_update();
 
-    return true;
+    // Reset the SPI RX DMA channel to write to the same buffer the PIO is currently 
+    // reading from. Is this a race condition? You betcha. So just be careful how
+    // fast you send SPI updates, mmkay?
+    dma_channel_set_write_addr(dma_spi_rx, apa102_get_strip(), true);
 }
 
 
 int main() {
-    printf("APA102 LED strip control\n");
     stdio_init_all();
     pico_led_init();
     pico_set_led(false);
@@ -224,15 +75,49 @@ int main() {
     adc_gpio_init(26);
 
     strip = apa102_init(LED_STRIP_LEN);
-    apa102_log_strip();
 
-    struct repeating_timer timer;
-    add_repeating_timer_ms(FRAME_RATE_MS, led_strip_frame_callback, NULL, &timer);
+    // Enable SPI at 1 MHz and connect to GPIOs
+    spi_init(spi_default, 1000 * 1000);
+    gpio_set_function(PICO_DEFAULT_SPI_RX_PIN, GPIO_FUNC_SPI);
+    gpio_init(PICO_DEFAULT_SPI_CSN_PIN);
+    gpio_set_function(PICO_DEFAULT_SPI_SCK_PIN, GPIO_FUNC_SPI);
+    gpio_set_function(PICO_DEFAULT_SPI_TX_PIN, GPIO_FUNC_SPI);
+    // Make the SPI pins available to picotool
+    // bi_decl(bi_3pins_with_func(PICO_DEFAULT_SPI_RX_PIN, PICO_DEFAULT_SPI_TX_PIN, PICO_DEFAULT_SPI_SCK_PIN, GPIO_FUNC_SPI));
+    // Make the CS pin available to picotool
+    // bi_decl(bi_1pin_with_name(PICO_DEFAULT_SPI_CSN_PIN, "SPI CS"));
+
+    // Grab some unused dma channels
+    // const uint dma_tx = dma_claim_unused_channel(true);
+    dma_spi_rx = dma_claim_unused_channel(true);
+
+    // Force loopback for testing (I don't have an SPI device handy)
+    // hw_set_bits(&spi_get_hw(spi_default)->cr1, SPI_SSPCR1_LBM_BITS);
+
+    printf("Configure RX DMA\n");
+
+    // We set the inbound DMA to transfer from the SPI receive FIFO to a memory buffer paced by the SPI RX FIFO DREQ
+    // We configure the read address to remain unchanged for each element, but the write
+    // address to increment (so data is written throughout the buffer)
+    dma_channel_config rx_dma_config = dma_channel_get_default_config(dma_spi_rx);
+    channel_config_set_transfer_data_size(&rx_dma_config, DMA_SIZE_32);
+    channel_config_set_dreq(&rx_dma_config, spi_get_dreq(spi_default, false));
+    channel_config_set_read_increment(&rx_dma_config, false);
+    channel_config_set_write_increment(&rx_dma_config, true);
+    dma_channel_set_irq0_enabled(dma_spi_rx, true);
+    irq_set_exclusive_handler(DMA_IRQ_0, rx_dma_irq_handler);
+    irq_set_enabled(DMA_IRQ_0, true);
+    dma_channel_configure(dma_spi_rx, 
+                          &rx_dma_config,
+                          apa102_get_strip(),           // write to the APA102 buffer
+                          &spi_get_hw(spi_default)->dr, // read address
+                          apa102_get_buffer_size(),     // element count (each element is of size transfer_data_size)
+                          true);
 
     while(true) {
-        // pico_set_led(true);
-        // sleep_ms(1000);
-        // pico_set_led(false);
-        sleep_ms(1000);
+        pico_set_led(true);
+        sleep_ms(500);
+        pico_set_led(false);
+        sleep_ms(500);
     }
 }

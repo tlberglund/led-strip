@@ -33,17 +33,24 @@ APA102_LED *apa102_get_strip() {
 }
 
 
-uint16_t apa102_get_strip_len() {
+// Number of actual LEDs in the strip
+uint16_t apa102_get_strip_count() {
     return apa102_strip_length;
+}
+
+
+// The number of 32-bit words to transfer from SPI or to the PIO
+uint16_t apa102_get_buffer_size() {
+    return apa102_strip_length + 2;
 }
 
 
 void apa102_config_tx_dma() {
     dma_channel_configure(dma_pio_tx, 
                           &apa102_dma_channel_config,
-                          &apa102_pio->txf[apa102_sm], // write address
-                          apa102_strip,                // read address
-                          (apa102_strip_length + 2),
+                          &apa102_pio->txf[apa102_sm], // write to PIO TX FIFO
+                          apa102_strip,                // read from LED buffer
+                          apa102_get_buffer_size(),
                           false);                      // don't start yet
 }
 
