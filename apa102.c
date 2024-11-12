@@ -62,16 +62,13 @@ void apa102_strip_init(APA102_LED *strip, uint16_t strip_len) {
     }
 
     // End frame is 32 bits of all ones
-    memset(&strip[strip_len], 0xff, sizeof(APA102_LED));
-
-    for(int i = 0; i < strip_len + 2; i++) {
-        printf("%08x\n", (uint32_t)(strip + i * 4));
-    }
+    memset(&strip[strip_len + 1], 0xff, sizeof(APA102_LED));
 }
 
 
 void apa102_set_led(uint16_t led, uint8_t red, uint8_t green, uint8_t blue, uint8_t brightness) {
-    if(led < (apa102_strip_length - 2)) {
+    if(led < apa102_strip_length) {
+        apa102_strip[led + 1].unused = 7;
         apa102_strip[led + 1].brightness = brightness;
         apa102_strip[led + 1].red = red;
         apa102_strip[led + 1].green = green;
@@ -98,7 +95,7 @@ APA102_LED *apa102_init(uint16_t strip_len) {
 
         dma_pio_tx = dma_claim_unused_channel(true);
         apa102_dma_channel_config = dma_channel_get_default_config(dma_pio_tx);
-        channel_config_set_bswap(&apa102_dma_channel_config, true);
+        // channel_config_set_bswap(&apa102_dma_channel_config, true);
         channel_config_set_transfer_data_size(&apa102_dma_channel_config, DMA_SIZE_32);
         channel_config_set_dreq(&apa102_dma_channel_config, pio_get_dreq(apa102_pio, apa102_sm, true));
     }

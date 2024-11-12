@@ -2,11 +2,11 @@
 
 
 typedef struct {
-    unsigned int unused : 3;
-    unsigned int brightness : 5;
-    unsigned int blue : 8;
-    unsigned int green : 8;
     unsigned int red : 8;
+    unsigned int green : 8;
+    unsigned int blue : 8;
+    unsigned int brightness : 5;
+    unsigned int unused : 3;
 } APA102_LED;
 
 
