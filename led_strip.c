@@ -19,12 +19,18 @@
 
 #define FRAME_RATE_MS 1000/24
 #define LED_STRIP_LEN 60
+#define SPI_RX_BUFFER_LEN 1000
+#define LED_CONFIG_WORD_LEN 4
+#define LED_CONFIG_RED(buf, n) (*((((uint8_t *)buf) + (n * LED_CONFIG_WORD_LEN)) + 1))
+#define LED_CONFIG_GREEN(buf, n) (*((((uint8_t *)buf) + (n * LED_CONFIG_WORD_LEN)) + 2))
+#define LED_CONFIG_BLUE(buf, n) (*((((uint8_t *)buf) + (n * LED_CONFIG_WORD_LEN)) + 3))
+#define LED_CONFIG_BRIGHTNESS(buf, n) (*((((uint8_t *)buf) + (n * LED_CONFIG_WORD_LEN)) + 0))
 
 APA102_LED *strip;
 uint dma_spi_rx;
 uint32_t iteration;
 float filtered_h = 180.0, filtered_l = 500.0, filtered_s = 500.0;
-
+uint8_t spi_rx_buffer[SPI_RX_BUFFER_LEN];
 
 
 int pico_led_init(void) {
@@ -53,16 +59,23 @@ void printbuf(uint8_t buf[], size_t len) {
 }
 
 
-
 void rx_dma_irq_handler() {
-    // SPI DMA has dumped a complete APA102 LED image into the API's buffer. Send
-    // it to the PIO, so we can see pretty lights.
+    printf("SPI DMA IRQ");
+
+    // Convert SPI buffer of abstract LED configs into APA102-packed data
+    for(int n = 0; n < LED_STRIP_LEN; n ++) {
+        apa102_set_led(n,
+                       LED_CONFIG_RED(spi_rx_buffer, n),
+                       LED_CONFIG_GREEN(spi_rx_buffer, n),
+                       LED_CONFIG_BLUE(spi_rx_buffer, n),
+                       LED_CONFIG_BRIGHTNESS(spi_rx_buffer, n));
+    }
+
+    // Actually program the LEDs
     apa102_strip_update();
 
-    // Reset the SPI RX DMA channel to write to the same buffer the PIO is currently 
-    // reading from. Is this a race condition? You betcha. So just be careful how
-    // fast you send SPI updates, mmkay?
-    dma_channel_set_write_addr(dma_spi_rx, apa102_get_strip(), true);
+    // Reset the SPI RX DMA channel to the one singular solitary buffer
+    dma_channel_set_write_addr(dma_spi_rx, spi_rx_buffer, true);
 }
 
 
@@ -109,12 +122,13 @@ int main() {
     irq_set_enabled(DMA_IRQ_0, true);
     dma_channel_configure(dma_spi_rx, 
                           &rx_dma_config,
-                          apa102_get_strip(),           // write to the APA102 buffer
-                          &spi_get_hw(spi_default)->dr, // read address
-                          apa102_get_buffer_size(),     // element count (each element is of size transfer_data_size)
+                          spi_rx_buffer,                       // write to the APA102 buffer
+                          &spi_get_hw(spi_default)->dr,        // read address
+                          LED_STRIP_LEN * LED_CONFIG_WORD_LEN, // element count (each element is of size transfer_data_size)
                           true);
 
     while(true) {
+        printf("TICK\n");
         pico_set_led(true);
         sleep_ms(500);
         pico_set_led(false);
