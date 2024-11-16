@@ -13,6 +13,8 @@ class LEDStrip:
         self.spi.open(0, 0)
         self.spi.max_speed_hz = 1000000
         self.spi.mode = 0
+        self.spi.bits_per_word = 8
+        self.spi.lsbfirst = False
         
         # Setup LED array
         self.num_leds = num_leds
@@ -45,6 +47,14 @@ class LEDStrip:
         self.buffer[base + 2] = green & 0xff
         self.buffer[base + 3] = blue & 0xff
     
+    def print_buffer(self):
+        for i, byte in enumerate(self.buffer):
+            print(f"{byte:02X} ", end ='')
+            if (i+1) % 16 == 0:
+                print()
+        if len(self.buffer) % 16 != 0:
+            print()
+
     def fill(self, brightness: int, green: int, blue: int, red: int) -> None:
         """Set all LEDs to the same color and brightness"""
         for i in range(self.num_leds):
@@ -56,6 +66,7 @@ class LEDStrip:
     
     def update(self) -> None:
         """Send the entire buffer to the LED strip"""
+        self.print_buffer()
         self.spi.xfer3(self.buffer)
     
     def cleanup(self) -> None:
@@ -65,18 +76,19 @@ class LEDStrip:
         self.spi.close()
 
 
-strip = LEDStrip(60)
+strip = LEDStrip(1)
 
 while 1:
-    strip.fill(red=255, green=0, blue=0, brightness=5)
+    input("Press enter for more SPI")
+    strip.fill(red=0, green=127, blue=0, brightness=15)
     strip.update()
-    time.sleep(0.5)
-    strip.fill(red=0, green=255, blue=0, brightness=5)
-    strip.update()
-    time.sleep(0.5)
-    strip.fill(red=0, green=0, blue=255, brightness=5)
-    strip.update()
-    time.sleep(0.5)
+    # time.sleep(0.5)
+    # strip.fill(red=0, green=255, blue=0, brightness=5)
+    # strip.update()
+    # time.sleep(0.5)
+    # strip.fill(red=0, green=0, blue=255, brightness=5)
+    # strip.update()
+    # time.sleep(0.5)
 
 # schedule.every(1/24.0).seconds.do(controller.update_lights)
 
