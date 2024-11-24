@@ -136,8 +136,6 @@ int main() {
     iteration = 0;
     strip = apa102_init(apa102_pio, apa102_sm, LED_STRIP_LEN);
 
-    printf("strip=%08x\n", strip);
-
     while(true) {
         if(examine_rx_buffer) {
             for(int n = 0; n < LED_STRIP_LEN; n++) {
