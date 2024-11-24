@@ -27,19 +27,12 @@ include(pico_sdk_import.cmake)
 
 project(led_strip C CXX ASM)
 
-# Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
-
-# Add executable. Default name is the project name, version 0.1
 
 add_executable(led_strip led_strip.c apa102.c)
 
 pico_generate_pio_header(led_strip ${CMAKE_CURRENT_LIST_DIR}/apa102.pio)
 
-#target_sources(pio_apa102 PRIVATE apa102.c)
-
-
-# pull in common dependencies
 target_link_libraries(led_strip 
     pico_stdlib 
     hardware_spi 
@@ -49,13 +42,7 @@ target_link_libraries(led_strip
     pico_stdio_usb 
     pico_rand)
 
-if (PICO_CYW43_SUPPORTED)
-    target_link_libraries(blink pico_cyw43_arch_none)
-endif()
-
 pico_enable_stdio_usb(led_strip 1)
 
-# create map/bin/hex file etc.
 pico_add_extra_outputs(led_strip)
 
-# add url via pico_set_program_url
