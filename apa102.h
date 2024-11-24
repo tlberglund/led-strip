@@ -1,5 +1,5 @@
 
-
+#include "hardware/pio.h"
 
 typedef struct {
     unsigned int red : 8;
@@ -10,7 +10,7 @@ typedef struct {
 } APA102_LED;
 
 
-APA102_LED *apa102_init(uint16_t strip_len);
+APA102_LED *apa102_init(PIO pio, int sm, uint16_t strip_len);
 APA102_LED *apa102_get_strip();
 uint16_t apa102_get_strip_count();
 uint16_t apa102_get_buffer_size();

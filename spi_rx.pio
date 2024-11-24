@@ -1,0 +1,38 @@
+;
+; RX-only SPI. Ignore CS, and just clocks in bits to the RX FIFO like a baus
+;
+.program spi_rx
+.define SCK_PIN 2
+.fifo rx
+
+.wrap_target
+    wait 1 pin SCK_PIN   ; Wait for clock rising edge
+    in pins, 1           ; Sample MOSI
+    wait 0 pin SCK_PIN   ; Wait for clock falling edge
+.wrap
+
+% c-sdk {
+static inline void pio_spi_rx_init(PIO pio, 
+                                   uint sm, 
+                                   uint prog_offs, 
+                                   uint n_bits,
+                                   float clkdiv, 
+                                   uint pin_sck, 
+                                   uint pin_mosi) {
+    pio_sm_config c = spi_rx_program_get_default_config(prog_offs);
+
+    // Only support MSB-first in this example code (shift to left, auto push/pull, threshold=nbits)
+    sm_config_set_clkdiv(&c, clkdiv);
+
+    sm_config_set_in_pins(&c, pin_mosi);         // Set input pin (MOSI)
+    sm_config_set_in_shift(&c, false, true, 8);  // Shift right, autopush at 8 bits
+    sm_config_set_jmp_pin(&c, pin_sck);          // Set pin to monitor for wait conditions
+    pio_gpio_init(pio, pin_mosi);
+    pio_gpio_init(pio, pin_sck);
+    gpio_set_dir(pin_mosi, false);
+    gpio_set_dir(pin_sck, false);
+
+    pio_sm_init(pio, sm, prog_offs, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+%}

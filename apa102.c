@@ -18,8 +18,8 @@
 #define APA102_START_FRAME ((APA102_LED)0);
 #define APA102_END_FRAME ((APA102_LED)0xffffffff);
 
-PIO apa102_pio = pio0;
-uint apa102_sm = 0;
+static PIO apa102_pio;
+static uint apa102_sm;
 uint dma_pio_tx;
 dma_channel_config apa102_dma_channel_config;
 
@@ -90,8 +90,12 @@ void apa102_strip_update() {
 }
 
 
-APA102_LED *apa102_init(uint16_t strip_len) {
+APA102_LED *apa102_init(PIO pio, int sm, uint16_t strip_len) {
     if(strip_len <= MAX_STRIP_LENGTH) {
+
+        apa102_pio = pio;
+        apa102_sm = sm;
+
         // Allocate memory for strip length plus start and end frames
         apa102_strip = (APA102_LED *)malloc((strip_len + 2) * sizeof(APA102_LED));
         apa102_strip_length = strip_len;
@@ -102,7 +106,6 @@ APA102_LED *apa102_init(uint16_t strip_len) {
 
         dma_pio_tx = dma_claim_unused_channel(true);
         apa102_dma_channel_config = dma_channel_get_default_config(dma_pio_tx);
-        // channel_config_set_bswap(&apa102_dma_channel_config, true);
         channel_config_set_transfer_data_size(&apa102_dma_channel_config, DMA_SIZE_32);
         channel_config_set_dreq(&apa102_dma_channel_config, pio_get_dreq(apa102_pio, apa102_sm, true));
     }

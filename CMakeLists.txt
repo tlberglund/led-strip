@@ -32,6 +32,7 @@ pico_sdk_init()
 add_executable(led_strip led_strip.c apa102.c)
 
 pico_generate_pio_header(led_strip ${CMAKE_CURRENT_LIST_DIR}/apa102.pio)
+pico_generate_pio_header(led_strip ${CMAKE_CURRENT_LIST_DIR}/spi_rx.pio)
 
 target_link_libraries(led_strip 
     pico_stdlib 
