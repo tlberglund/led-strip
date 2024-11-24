@@ -68,7 +68,7 @@ class LEDStrip:
     
     def update(self) -> None:
         """Send the entire buffer to the LED strip"""
-        self.print_buffer()
+        # self.print_buffer()
         self.spi.xfer3(self.buffer)
     
     def run_animation(self, pattern_func, duration=None):
@@ -112,10 +112,11 @@ def blue_blobs_on_orange():
     animator = LEDStrip(60)
     
     # Animation parameters
-    ORANGE_COLOR = (237, 115, 21)
-    BLUE_COLOR = (64, 88, 222)
-    BLOB_WIDTH = 10
-    TOTAL_TIME = 7
+    BG_COLOR = (64, 88, 222)
+    BLOB_COLOR = (237, 115, 21)
+    BRIGHTNESS = 5
+    BLOB_WIDTH = 15
+    TOTAL_TIME = 10
     
     # Calculate movement per frame
     pixels_per_second = animator.num_leds / TOTAL_TIME
@@ -142,11 +143,13 @@ def blue_blobs_on_orange():
             blob_influence = min(1.0, max(0.0, blob_influence))  # Clamp between 0 and 1
             
             # Blend orange and blue based on blob influence
-            r, g, b = blend_colors(ORANGE_COLOR, BLUE_COLOR, blob_influence)
+            r, g, b = blend_colors(BG_COLOR, BLOB_COLOR, blob_influence)
             
             # Set the LED
-            set_led(i, r, g, b, 31)  # Full brightness
+            animator.set_led(i, r, g, b, BRIGHTNESS)  # Full brightness
         
+        animator.update()
+
         # Move blob position
         blob_position += pixels_per_frame
         
