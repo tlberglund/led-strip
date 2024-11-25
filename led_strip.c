@@ -12,11 +12,14 @@
 #include "hardware/dma.h"
 #include "hardware/clocks.h"
 #include "hardware/pio.h"
+#include "hardware/sync.h"
 #include "pico/rand.h"
 #include "apa102.h"
 #include "spi_rx.pio.h"
 #include "hsl_to_rgb.h"
 #include "pico/critical_section.h"
+
+
 
 
 #define FRAME_RATE_MS 1000/24
@@ -30,7 +33,7 @@ uint32_t iteration;
 uint8_t spi_rx_buffer_1[SPI_RX_BUFFER_LEN], spi_rx_buffer_2[SPI_RX_BUFFER_LEN];
 uint8_t *spi_rx_active_buffer = spi_rx_buffer_1;
 uint8_t *spi_rx_standby_buffer = spi_rx_buffer_2;
-uint8_t *spi_rx_buffer = NULL;
+static volatile uint8_t *spi_rx_buffer = NULL;
 
 int spi_rx_dma_channel = -1;
 bool spi_rx_dma_complete = false;
@@ -84,9 +87,12 @@ void swap_rx_buffers() {
 
 void rx_dma_irq_handler() {
     dma_channel_acknowledge_irq0(spi_rx_dma_channel);
+    __dmb();
     spi_rx_buffer = spi_rx_active_buffer;
+    __dmb();
     swap_rx_buffers();
     dma_channel_set_write_addr(spi_rx_dma_channel, spi_rx_active_buffer, true);
+    __sev();
 }
 
 
@@ -142,8 +148,11 @@ int main() {
     strip = apa102_init(apa102_pio, apa102_sm, LED_STRIP_LEN);
 
     pico_set_led(true);
+    __sev();
+    __wfe();
     while(true) {
-        sleep_ms(1);
+        // sleep_ms(1);
+        __dmb();
         if(spi_rx_buffer) {
             pico_set_led(true);
             for(int n = 0; n < LED_STRIP_LEN; n++) {
@@ -157,9 +166,11 @@ int main() {
                 apa102_set_led(n, red, green, blue, brightness);
             }
             apa102_strip_update();
+            __dmb();
             spi_rx_buffer = NULL;
+            __dmb();
             pico_set_led(false);
-
         }
+        __wfe();
     }
 }
