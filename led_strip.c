@@ -11,27 +11,26 @@
 #include "pico/binary_info.h"
 #include "hardware/dma.h"
 #include "hardware/clocks.h"
-// #include "hardware/adc.h"
 #include "hardware/pio.h"
 #include "pico/rand.h"
 #include "apa102.h"
 #include "spi_rx.pio.h"
 #include "hsl_to_rgb.h"
+#include "pico/critical_section.h"
 
 
 #define FRAME_RATE_MS 1000/24
 #define LED_STRIP_LEN 60
 #define LED_CONFIG_WORD_LEN 4
-#define SPI_RX_BUFFER_LEN ((LED_STRIP_LEN + 1) * LED_CONFIG_WORD_LEN)
-#define LED_CONFIG_RED(buf, n) (*((((uint8_t *)buf) + (n * LED_CONFIG_WORD_LEN)) + 1))
-#define LED_CONFIG_GREEN(buf, n) (*((((uint8_t *)buf) + (n * LED_CONFIG_WORD_LEN)) + 2))
-#define LED_CONFIG_BLUE(buf, n) (*((((uint8_t *)buf) + (n * LED_CONFIG_WORD_LEN)) + 3))
-#define LED_CONFIG_BRIGHTNESS(buf, n) (*((((uint8_t *)buf) + (n * LED_CONFIG_WORD_LEN)) + 0))
+#define SPI_RX_BUFFER_LEN ((LED_STRIP_LEN) * LED_CONFIG_WORD_LEN)
 
 APA102_LED *strip;
 uint32_t iteration;
-float filtered_h = 180.0, filtered_l = 500.0, filtered_s = 500.0;
-uint8_t spi_rx_buffer[SPI_RX_BUFFER_LEN];
+
+uint8_t spi_rx_buffer_1[SPI_RX_BUFFER_LEN], spi_rx_buffer_2[SPI_RX_BUFFER_LEN];
+uint8_t *spi_rx_active_buffer = spi_rx_buffer_1;
+uint8_t *spi_rx_standby_buffer = spi_rx_buffer_2;
+uint8_t *spi_rx_buffer = NULL;
 
 int spi_rx_dma_channel = -1;
 bool spi_rx_dma_complete = false;
@@ -70,12 +69,24 @@ void printbuf(uint8_t buf[], size_t len) {
 }
 
 
-bool examine_rx_buffer = false;
+void swap_rx_buffers() {
+    uint8_t *temp;
+
+    uint32_t status = save_and_disable_interrupts();
+    
+    temp = spi_rx_active_buffer;
+    spi_rx_active_buffer = spi_rx_standby_buffer;
+    spi_rx_standby_buffer = temp;
+
+    restore_interrupts(status);
+}
+
+
 void rx_dma_irq_handler() {
     dma_channel_acknowledge_irq0(spi_rx_dma_channel);
-    // Reset the SPI RX DMA channel to the one singular solitary buffer
-    dma_channel_set_write_addr(spi_rx_dma_channel, spi_rx_buffer, true);
-    examine_rx_buffer = true;
+    spi_rx_buffer = spi_rx_active_buffer;
+    swap_rx_buffers();
+    dma_channel_set_write_addr(spi_rx_dma_channel, spi_rx_active_buffer, true);
 }
 
 
@@ -112,13 +123,13 @@ void spi_rx_init() {
     dma_channel_configure(
         spi_rx_dma_channel,
         &spi_rx_dma_config,
-        spi_rx_buffer,                // Write to buffer
+        spi_rx_active_buffer,         // Write to buffer
         &spi_rx_pio->rxf[spi_rx_sm],  // Read from PIO RX FIFO
-        60 * 4,                       // Number of bytes
+        SPI_RX_BUFFER_LEN,            // Number of bytes
         true                          // Start immediately
     );
-
 }
+
 
 int main() {
     stdio_init_all();
@@ -126,19 +137,14 @@ int main() {
     sleep_ms(500);
     pico_set_led(true);
 
-    // gpio_set_dir(15, GPIO_OUT);
-    // gpio_put(15, 0);
-
-    // adc_init();
-    // adc_gpio_init(26);
-
     spi_rx_init();
     iteration = 0;
     strip = apa102_init(apa102_pio, apa102_sm, LED_STRIP_LEN);
 
-    pico_set_led(false);
+    pico_set_led(true);
     while(true) {
-        if(examine_rx_buffer) {
+        sleep_ms(1);
+        if(spi_rx_buffer) {
             pico_set_led(true);
             for(int n = 0; n < LED_STRIP_LEN; n++) {
                 uint8_t brightness, red, green, blue;
@@ -151,10 +157,9 @@ int main() {
                 apa102_set_led(n, red, green, blue, brightness);
             }
             apa102_strip_update();
-            examine_rx_buffer = false;
+            spi_rx_buffer = NULL;
             pico_set_led(false);
-        }
-        sleep_ms(50);
-    }
 
+        }
+    }
 }
