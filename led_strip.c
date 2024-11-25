@@ -136,8 +136,10 @@ int main() {
     iteration = 0;
     strip = apa102_init(apa102_pio, apa102_sm, LED_STRIP_LEN);
 
+    pico_set_led(false);
     while(true) {
         if(examine_rx_buffer) {
+            pico_set_led(true);
             for(int n = 0; n < LED_STRIP_LEN; n++) {
                 uint8_t brightness, red, green, blue;
                 uint8_t *led_config;
@@ -150,12 +152,9 @@ int main() {
             }
             apa102_strip_update();
             examine_rx_buffer = false;
+            pico_set_led(false);
         }
-        pico_set_led(true);
         sleep_ms(50);
-        pico_set_led(false);
-        sleep_ms(50);
-        iteration++;
     }
 
 }
