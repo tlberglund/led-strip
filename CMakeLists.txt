@@ -29,7 +29,7 @@ project(led_strip C CXX ASM)
 
 pico_sdk_init()
 
-add_executable(led_strip led_strip.c apa102.c)
+add_executable(led_strip led_strip.cpp apa102.cpp)
 
 pico_generate_pio_header(led_strip ${CMAKE_CURRENT_LIST_DIR}/apa102.pio)
 pico_generate_pio_header(led_strip ${CMAKE_CURRENT_LIST_DIR}/spi_rx.pio)

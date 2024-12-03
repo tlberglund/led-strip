@@ -14,11 +14,10 @@
 #include "hardware/pio.h"
 #include "hardware/sync.h"
 #include "pico/rand.h"
-#include "apa102.h"
+#include "apa102.hpp"
 #include "spi_rx.pio.h"
 #include "hsl_to_rgb.h"
 #include "pico/critical_section.h"
-
 
 
 
@@ -27,7 +26,6 @@
 #define LED_CONFIG_WORD_LEN 4
 #define SPI_RX_BUFFER_LEN ((LED_STRIP_LEN) * LED_CONFIG_WORD_LEN)
 
-APA102_LED *strip;
 uint32_t iteration;
 
 uint8_t spi_rx_buffer_1[SPI_RX_BUFFER_LEN], spi_rx_buffer_2[SPI_RX_BUFFER_LEN];
@@ -38,8 +36,6 @@ static volatile uint8_t *spi_rx_buffer = NULL;
 int spi_rx_dma_channel = -1;
 bool spi_rx_dma_complete = false;
 
-PIO apa102_pio = pio0;
-int apa102_sm = 0;
 PIO spi_rx_pio = pio1;
 int spi_rx_sm = 0;
 
@@ -97,6 +93,7 @@ void rx_dma_irq_handler() {
 
 
 void spi_rx_init() {
+#if 0
     uint offset = pio_add_program(spi_rx_pio, &spi_rx_program);
 
     float spi_clock = 1000000;
@@ -134,24 +131,50 @@ void spi_rx_init() {
         SPI_RX_BUFFER_LEN,            // Number of bytes
         true                          // Start immediately
     );
+#endif
 }
 
 
 int main() {
     stdio_init_all();
     pico_led_init();
-    sleep_ms(500);
+    sleep_ms(2000); // wait for serial port for some reason
     pico_set_led(true);
 
-    spi_rx_init();
+    printf("led_strip\n");
+
+    // spi_rx_init();
     iteration = 0;
-    strip = apa102_init(apa102_pio, apa102_sm, LED_STRIP_LEN);
 
-    pico_set_led(true);
-    __sev();
-    __wfe();
+    // APA102 strip1(1, 2, 3, pio0, 0);
+    APA102 strip2(3, 4, 5, pio0, 1);
+
+    // strip1.set_led(0, 1, 1, 1, 7);
+
+    uint8_t red = 0, green = 0, blue = 0;
+    strip2.set_led(0, red, 0, 0, 7);
+    strip2.set_led(1, 0, green, 0, 7);
+    strip2.set_led(2, 0, 0, blue, 7);
+
+    // __sev();
+    // __wfe();
     while(true) {
-        // sleep_ms(1);
+        iteration++;
+        sleep_ms(10);
+        pico_set_led(true);
+        // strip1.update_strip();
+        red++;
+        green++;
+        blue++;
+        strip2.set_led(0, red, 0, 0, 7);
+        strip2.set_led(1, 0, green, 0, 7);
+        strip2.set_led(2, 0, 0, blue, 7);
+
+        strip2.update_strip();
+        sleep_ms(10);
+        // printf("ITERATION %d\n", iteration);
+        pico_set_led(false);
+#if 0
         __dmb();
         if(spi_rx_buffer) {
             pico_set_led(true);
@@ -172,5 +195,6 @@ int main() {
             pico_set_led(false);
         }
         __wfe();
+#endif
     }
 }
